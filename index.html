@@ -64,9 +64,11 @@
         </div>
       </div>
       <p class="text-sm mt-4 mb-5 leading-relaxed" style="color:var(--muted)">
-        Go to <strong class="text-white">github.com → Settings → Developer Settings → Personal access tokens (Classic)</strong>
-        and generate a token with <strong class="text-white">repo</strong> scope.
-        It is stored only in your browser and never sent anywhere else.
+        Go to <strong class="text-white">github.com → Settings → Developer Settings → Fine-grained tokens</strong>,
+        create a token scoped to only <strong class="text-white">trading-agent</strong> and
+        <strong class="text-white">trading-agent-intraday</strong>, with
+        <strong class="text-white">Contents: Read-only</strong> permission.
+        The token is stored in your browser only and is only ever sent to api.github.com.
       </p>
       <label for="tokenInput" class="sr-only">GitHub token</label>
       <input id="tokenInput" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
@@ -422,10 +424,10 @@ function renderCard(bot, equity, trades, pos) {
 
   const last = trades?.length ? trades[trades.length - 1] : null;
   const lastEl = document.getElementById(`${bot}-last`);
-  if (last) {
+  if (last && validTrade(last)) {
     const c = last.type === 'BUY' ? 'var(--green)' : 'var(--red)';
     const p = (last.price ?? last.price_estimate ?? 0).toFixed(2);
-    lastEl.innerHTML = `<span style="color:${c};font-weight:600">${last.type}</span> ${last.symbol} $${p}`;
+    lastEl.innerHTML = `<span style="color:${c};font-weight:600">${esc(last.type)}</span> ${esc(last.symbol)} $${p}`;
   } else {
     lastEl.textContent = 'No trades yet';
     lastEl.style.color = 'var(--dim)';
@@ -439,31 +441,34 @@ function renderTrades(bot, trades) {
     el.innerHTML = '<p class="text-xs text-center py-6" style="color:var(--dim)">No trades yet</p>';
     return;
   }
-  el.innerHTML = [...trades].reverse().slice(0, 8).map(t => {
-    const buy    = t.type === 'BUY';
-    const tCol   = buy ? 'var(--green)' : 'var(--red)';
-    const tBg    = buy ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
-    const price  = (t.price ?? t.price_estimate ?? 0).toFixed(2);
-    const retStr = t.return_pct != null
-      ? ` <span style="color:${t.return_pct>=0?'var(--green)':'var(--red)'}">${t.return_pct>=0?'+':''}${(t.return_pct*100).toFixed(2)}%</span>`
-      : '';
-    const dt   = new Date(t.timestamp);
-    const date = dt.toLocaleDateString('en-GB', { month:'short', day:'numeric' });
-    const time = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-    return `
-      <div class="flex items-center justify-between rounded-xl px-3 py-2.5" style="background:var(--card)">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <span class="text-xs font-bold font-mono px-2 py-0.5 rounded shrink-0"
-            style="color:${tCol};background:${tBg}">${t.type}</span>
-          <span class="font-semibold text-sm">${esc(t.symbol)}</span>
-          <span class="text-xs hidden sm:block" style="color:var(--muted)">${t.qty} sh</span>
-        </div>
-        <div class="text-right shrink-0 ml-2">
-          <div class="text-xs font-mono">$${price}${retStr}</div>
-          <div class="text-xs" style="color:var(--dim)">${date} ${time}</div>
-        </div>
-      </div>`;
-  }).join('');
+  el.innerHTML = [...trades].reverse().slice(0, 8)
+    .filter(validTrade)
+    .map(t => {
+      const buy    = t.type === 'BUY';
+      const tCol   = buy ? 'var(--green)' : 'var(--red)';
+      const tBg    = buy ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
+      const price  = (t.price ?? t.price_estimate ?? 0).toFixed(2);
+      const qty    = Number(t.qty).toFixed(0);
+      const retStr = t.return_pct != null
+        ? ` <span style="color:${t.return_pct>=0?'var(--green)':'var(--red)'}">${t.return_pct>=0?'+':''}${(t.return_pct*100).toFixed(2)}%</span>`
+        : '';
+      const dt   = new Date(t.timestamp);
+      const date = dt.toLocaleDateString('en-GB', { month:'short', day:'numeric' });
+      const time = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+      return `
+        <div class="flex items-center justify-between rounded-xl px-3 py-2.5" style="background:var(--card)">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="text-xs font-bold font-mono px-2 py-0.5 rounded shrink-0"
+              style="color:${tCol};background:${tBg}">${esc(t.type)}</span>
+            <span class="font-semibold text-sm">${esc(t.symbol)}</span>
+            <span class="text-xs hidden sm:block" style="color:var(--muted)">${qty} sh</span>
+          </div>
+          <div class="text-right shrink-0 ml-2">
+            <div class="text-xs font-mono">$${price}${retStr}</div>
+            <div class="text-xs" style="color:var(--dim)">${date} ${time}</div>
+          </div>
+        </div>`;
+    }).join('');
 }
 
 // ─── Log ──────────────────────────────────────────────────────────────────────
@@ -592,7 +597,19 @@ function updateMarketStatus() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+// Allowlist validator — drops any trade row with unexpected field values before
+// it can reach innerHTML, preventing XSS even if the JSON file is tampered with.
+const VALID_TYPES  = new Set(['BUY', 'SELL']);
+const TICKER_RE    = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+function validTrade(t) {
+  if (!t || typeof t !== 'object')            return false;
+  if (!VALID_TYPES.has(t.type))               return false;
+  if (!TICKER_RE.test(String(t.symbol ?? ''))) return false;
+  if (!isFinite(Number(t.qty)))               return false;
+  return true;
+}
 const prevDay = d => new Date(new Date(d+'T12:00:00Z') - 86_400_000).toISOString().slice(0,10);
 function isDST(d) {
   const j = new Date(d.getFullYear(), 0, 1).getTimezoneOffset();
