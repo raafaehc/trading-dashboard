@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Bot Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --bg:      #020617;
+      --surface: #0F172A;
+      --card:    #1E293B;
+      --border:  #1E293B;
+      --border2: #334155;
+      --text:    #F8FAFC;
+      --muted:   #94A3B8;
+      --dim:     #475569;
+      --green:   #22C55E;
+      --red:     #EF4444;
+      --blue:    #3B82F6;
+      --emerald: #10B981;
+      --amber:   #F59E0B;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .pulse { animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+    @media (prefers-reduced-motion: reduce) { .spin, .pulse { animation: none; } }
+  </style>
+</head>
+<body class="min-h-screen font-sans">
+
+  <!-- ── Token Modal ───────────────────────────────────────────────── -->
+  <div id="tokenModal" class="fixed inset-0 z-50 flex items-center justify-center hidden"
+       style="background:rgba(0,0,0,.75);backdrop-filter:blur(6px)">
+    <div class="w-full max-w-md mx-4 rounded-2xl p-8 border"
+         style="background:var(--surface);border-color:var(--border2)">
+      <div class="flex items-center gap-3 mb-2">
+        <svg class="w-7 h-7 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <div>
+          <h2 class="text-lg font-semibold">GitHub Access Token</h2>
+          <p class="text-sm" style="color:var(--muted)">Required to read your private bot repos</p>
+        </div>
+      </div>
+      <p class="text-sm mt-4 mb-5 leading-relaxed" style="color:var(--muted)">
+        Go to <strong class="text-white">github.com → Settings → Developer Settings → Personal access tokens (Classic)</strong>
+        and generate a token with <strong class="text-white">repo</strong> scope.
+        It is stored only in your browser and never sent anywhere else.
+      </p>
+      <label for="tokenInput" class="sr-only">GitHub token</label>
+      <input id="tokenInput" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+        class="w-full rounded-xl px-4 py-3 text-sm font-mono mb-4 outline-none focus:ring-2"
+        style="background:var(--card);border:1px solid var(--border2);color:var(--text);caret-color:var(--green)"
+        onkeydown="if(event.key==='Enter') saveToken()">
+      <button onclick="saveToken()"
+        class="w-full py-3 rounded-xl font-semibold text-sm transition-opacity hover:opacity-90 cursor-pointer"
+        style="background:var(--green);color:#020617">
+        Connect Dashboard
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Main ─────────────────────────────────────────────────────── -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- Header -->
+    <header class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">Trading Bot Dashboard</h1>
+        <p class="text-xs mt-0.5" style="color:var(--muted)">Paper trading · Alpaca Markets · 30-day A/B test</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div id="marketStatus" class="flex items-center gap-2 text-xs" style="color:var(--muted)"></div>
+        <span id="lastUpdated" class="text-xs hidden" style="color:var(--dim)"></span>
+        <button onclick="loadAll()" id="refreshBtn"
+          class="flex items-center gap-2 text-sm px-4 py-2 rounded-lg border cursor-pointer transition-colors"
+          style="background:var(--card);border-color:var(--border2)"
+          onmouseover="this.style.background='var(--border2)'"
+          onmouseout="this.style.background='var(--card)'">
+          <svg id="refreshIcon" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Refresh
+        </button>
+        <button onclick="resetToken()" class="text-xs cursor-pointer transition-colors"
+          style="color:var(--dim)"
+          onmouseover="this.style.color='var(--muted)'"
+          onmouseout="this.style.color='var(--dim)'">
+          Reset token
+        </button>
+      </div>
+    </header>
+
+    <!-- Bot Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+
+      <!-- Swing Bot -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-start justify-between mb-5">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                   style="color:var(--blue)" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+              </svg>
+              <span class="text-sm font-semibold tracking-wide" style="color:var(--blue)">SWING BOT</span>
+            </div>
+            <p class="text-xs" style="color:var(--muted)">EMA20 + momentum · Daily bars · Holds days–weeks</p>
+          </div>
+          <span id="swing-status" class="text-xs px-2.5 py-1 rounded-full font-medium"></span>
+        </div>
+        <div class="mb-5">
+          <div id="swing-equity" class="text-4xl font-bold font-mono tracking-tight">—</div>
+          <div id="swing-pnl" class="text-sm mt-1 font-mono"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 mb-5">
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Total trades</p>
+            <p id="swing-trade-count" class="font-semibold text-sm">—</p>
+          </div>
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Days running</p>
+            <p id="swing-days" class="font-semibold text-sm">—</p>
+          </div>
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Last action</p>
+            <p id="swing-last" class="font-semibold text-xs truncate">—</p>
+          </div>
+        </div>
+        <a href="https://github.com/raafaehc/trading-agent" target="_blank" rel="noopener"
+           class="flex items-center gap-2 text-xs transition-colors cursor-pointer"
+           style="color:var(--dim)"
+           onmouseover="this.style.color='var(--muted)'"
+           onmouseout="this.style.color='var(--dim)'">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          raafaehc/trading-agent
+        </a>
+      </div>
+
+      <!-- Intraday Bot -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-start justify-between mb-5">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                   style="color:var(--emerald)" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span class="text-sm font-semibold tracking-wide" style="color:var(--emerald)">INTRADAY BOT</span>
+            </div>
+            <p class="text-xs" style="color:var(--muted)">ORB + VWAP · 15-min bars · Flat by close</p>
+          </div>
+          <span id="intraday-status" class="text-xs px-2.5 py-1 rounded-full font-medium"></span>
+        </div>
+        <div class="mb-5">
+          <div id="intraday-equity" class="text-4xl font-bold font-mono tracking-tight">—</div>
+          <div id="intraday-pnl" class="text-sm mt-1 font-mono"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 mb-5">
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Total trades</p>
+            <p id="intraday-trade-count" class="font-semibold text-sm">—</p>
+          </div>
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Days running</p>
+            <p id="intraday-days" class="font-semibold text-sm">—</p>
+          </div>
+          <div class="rounded-xl p-3" style="background:var(--card)">
+            <p class="text-xs mb-1" style="color:var(--muted)">Last action</p>
+            <p id="intraday-last" class="font-semibold text-xs truncate">—</p>
+          </div>
+        </div>
+        <a href="https://github.com/raafaehc/trading-agent-intraday" target="_blank" rel="noopener"
+           class="flex items-center gap-2 text-xs transition-colors cursor-pointer"
+           style="color:var(--dim)"
+           onmouseover="this.style.color='var(--muted)'"
+           onmouseout="this.style.color='var(--dim)'">
+          <svg class="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          raafaehc/trading-agent-intraday
+        </a>
+      </div>
+    </div>
+
+    <!-- Portfolio Chart -->
+    <div class="rounded-2xl p-6 border mb-5" style="background:var(--surface);border-color:var(--border)">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 class="font-semibold text-sm">Portfolio Value</h2>
+          <p class="text-xs mt-0.5" style="color:var(--muted)">Both accounts start at $100,000</p>
+        </div>
+        <div class="flex items-center gap-5 text-xs" style="color:var(--muted)">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-0.5 rounded" style="background:var(--blue)"></div>Swing
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-0.5 rounded" style="background:var(--emerald)"></div>Intraday
+          </div>
+        </div>
+      </div>
+      <div style="height:180px;position:relative">
+        <canvas id="equityChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Trade Tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+
+      <!-- Swing Trades -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+               style="color:var(--blue)" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <h3 class="text-sm font-semibold">Swing — Recent Trades</h3>
+        </div>
+        <div id="swing-trades" class="space-y-2"></div>
+      </div>
+
+      <!-- Intraday Trades -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+               style="color:var(--emerald)" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <h3 class="text-sm font-semibold">Intraday — Recent Trades</h3>
+        </div>
+        <div id="intraday-trades" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Activity Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+
+      <!-- Swing Log -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+               style="color:var(--dim)" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h7"/>
+          </svg>
+          <h3 class="text-sm font-semibold">Swing — Activity Log</h3>
+        </div>
+        <div id="swing-log"
+          class="font-mono text-xs space-y-1.5 max-h-52 overflow-y-auto scrollbar-hide"
+          style="color:var(--muted)">
+          <p class="text-center py-6" style="color:var(--dim)">No activity yet</p>
+        </div>
+      </div>
+
+      <!-- Intraday Log -->
+      <div class="rounded-2xl p-6 border" style="background:var(--surface);border-color:var(--border)">
+        <div class="flex items-center gap-2 mb-4">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+               style="color:var(--dim)" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h7"/>
+          </svg>
+          <h3 class="text-sm font-semibold">Intraday — Activity Log</h3>
+        </div>
+        <div id="intraday-log"
+          class="font-mono text-xs space-y-1.5 max-h-52 overflow-y-auto scrollbar-hide"
+          style="color:var(--muted)">
+          <p class="text-center py-6" style="color:var(--dim)">No activity yet</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs py-4 border-t" style="color:var(--dim);border-color:var(--border)">
+      Auto-refreshes every 60 s &nbsp;·&nbsp; Reads from GitHub commits &nbsp;·&nbsp; Paper trading only — no real money
+    </footer>
+  </div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────────────────────────
+const OWNER       = 'raafaehc';
+const START       = 100_000;
+const REPOS       = { swing: 'trading-agent', intraday: 'trading-agent-intraday' };
+let   equityChart = null;
+
+// ─── Token ───────────────────────────────────────────────────────────────────
+const getToken   = () => localStorage.getItem('gh_token');
+const saveToken  = () => {
+  const t = document.getElementById('tokenInput').value.trim();
+  if (!t) return;
+  localStorage.setItem('gh_token', t);
+  document.getElementById('tokenModal').classList.add('hidden');
+  loadAll();
+  setInterval(loadAll, 60_000);
+};
+const resetToken = () => { localStorage.removeItem('gh_token'); location.reload(); };
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  updateMarketStatus();
+  setInterval(updateMarketStatus, 30_000);
+  if (!getToken()) {
+    document.getElementById('tokenModal').classList.remove('hidden');
+  } else {
+    loadAll();
+    setInterval(loadAll, 60_000);
+  }
+});
+
+// ─── GitHub API ──────────────────────────────────────────────────────────────
+async function gh(repo, path) {
+  const r = await fetch(
+    `https://api.github.com/repos/${OWNER}/${repo}/contents/${path}`,
+    { headers: { Authorization: `token ${getToken()}`, Accept: 'application/vnd.github.v3+json' } }
+  );
+  if (!r.ok) throw new Error(`${r.status}`);
+  const d = await r.json();
+  return atob(d.content.replace(/\n/g, ''));
+}
+const ghJSON = async (repo, path) => { try { return JSON.parse(await gh(repo, path)); } catch { return null; } };
+const ghText = async (repo, path) => { try { return await gh(repo, path); } catch { return null; } };
+
+// ─── Load ─────────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const btn  = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  icon.classList.add('spin');
+  btn.disabled = true;
+
+  try {
+    const [sEq, sTr, sLog, sPos, iEq, iTr, iLog, iPos] = await Promise.all([
+      ghJSON(REPOS.swing,    'memory/daily_equity.json'),
+      ghJSON(REPOS.swing,    'memory/trades.json'),
+      ghText(REPOS.swing,    'memory/trade_log.md'),
+      ghJSON(REPOS.swing,    'memory/positions.json'),
+      ghJSON(REPOS.intraday, 'memory/daily_equity.json'),
+      ghJSON(REPOS.intraday, 'memory/trades.json'),
+      ghText(REPOS.intraday, 'memory/trade_log.md'),
+      ghJSON(REPOS.intraday, 'memory/positions.json'),
+    ]);
+
+    renderCard('swing',    sEq, sTr, sPos);
+    renderCard('intraday', iEq, iTr, iPos);
+    renderTrades('swing',    sTr);
+    renderTrades('intraday', iTr);
+    renderLog('swing',    sLog);
+    renderLog('intraday', iLog);
+    renderChart(sEq, iEq);
+
+    const t = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    const el = document.getElementById('lastUpdated');
+    el.textContent = `Updated ${t}`;
+    el.classList.remove('hidden');
+  } catch(e) {
+    console.error('Load error:', e);
+  } finally {
+    icon.classList.remove('spin');
+    btn.disabled = false;
+  }
+}
+
+// ─── Card ─────────────────────────────────────────────────────────────────────
+function renderCard(bot, equity, trades, pos) {
+  const history = Array.isArray(equity) ? equity : [];
+  const current = history.length ? history[history.length - 1].equity : START;
+  const pnl     = current - START;
+  const pnlPct  = (pnl / START) * 100;
+  const halted  = pos?.halt === true;
+
+  // Equity
+  document.getElementById(`${bot}-equity`).textContent =
+    '$' + current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // P&L
+  const sign  = pnl >= 0 ? '+' : '';
+  const col   = pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : 'var(--muted)';
+  const pnlEl = document.getElementById(`${bot}-pnl`);
+  pnlEl.innerHTML = `<span style="color:${col}">${sign}$${Math.abs(pnl).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (${sign}${pnlPct.toFixed(2)}%)</span>`;
+
+  // Status badge
+  const badge = document.getElementById(`${bot}-status`);
+  if (halted) {
+    badge.textContent = 'HALTED';
+    badge.style.cssText = 'color:var(--red);background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3)';
+  } else {
+    badge.textContent = 'Active';
+    badge.style.cssText = 'color:var(--green);background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3)';
+  }
+
+  // Stats
+  document.getElementById(`${bot}-trade-count`).textContent = (trades?.length ?? 0).toString();
+
+  const days = history.length
+    ? Math.max(1, Math.round((Date.now() - new Date(history[0].timestamp)) / 86_400_000))
+    : 0;
+  document.getElementById(`${bot}-days`).textContent = days > 0 ? `${days}d` : 'Day 1';
+
+  const last = trades?.length ? trades[trades.length - 1] : null;
+  const lastEl = document.getElementById(`${bot}-last`);
+  if (last) {
+    const c = last.type === 'BUY' ? 'var(--green)' : 'var(--red)';
+    const p = (last.price ?? last.price_estimate ?? 0).toFixed(2);
+    lastEl.innerHTML = `<span style="color:${c};font-weight:600">${last.type}</span> ${last.symbol} $${p}`;
+  } else {
+    lastEl.textContent = 'No trades yet';
+    lastEl.style.color = 'var(--dim)';
+  }
+}
+
+// ─── Trades table ─────────────────────────────────────────────────────────────
+function renderTrades(bot, trades) {
+  const el = document.getElementById(`${bot}-trades`);
+  if (!trades?.length) {
+    el.innerHTML = '<p class="text-xs text-center py-6" style="color:var(--dim)">No trades yet</p>';
+    return;
+  }
+  el.innerHTML = [...trades].reverse().slice(0, 8).map(t => {
+    const buy    = t.type === 'BUY';
+    const tCol   = buy ? 'var(--green)' : 'var(--red)';
+    const tBg    = buy ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
+    const price  = (t.price ?? t.price_estimate ?? 0).toFixed(2);
+    const retStr = t.return_pct != null
+      ? ` <span style="color:${t.return_pct>=0?'var(--green)':'var(--red)'}">${t.return_pct>=0?'+':''}${(t.return_pct*100).toFixed(2)}%</span>`
+      : '';
+    const dt   = new Date(t.timestamp);
+    const date = dt.toLocaleDateString('en-GB', { month:'short', day:'numeric' });
+    const time = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    return `
+      <div class="flex items-center justify-between rounded-xl px-3 py-2.5" style="background:var(--card)">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="text-xs font-bold font-mono px-2 py-0.5 rounded shrink-0"
+            style="color:${tCol};background:${tBg}">${t.type}</span>
+          <span class="font-semibold text-sm">${esc(t.symbol)}</span>
+          <span class="text-xs hidden sm:block" style="color:var(--muted)">${t.qty} sh</span>
+        </div>
+        <div class="text-right shrink-0 ml-2">
+          <div class="text-xs font-mono">$${price}${retStr}</div>
+          <div class="text-xs" style="color:var(--dim)">${date} ${time}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── Log ──────────────────────────────────────────────────────────────────────
+function renderLog(bot, text) {
+  const el = document.getElementById(`${bot}-log`);
+  if (!text) {
+    el.innerHTML = '<p class="text-center py-6" style="color:var(--dim)">No activity yet</p>';
+    return;
+  }
+  const lines = text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'))
+    .reverse()
+    .slice(0, 25);
+  if (!lines.length) {
+    el.innerHTML = '<p class="text-center py-6" style="color:var(--dim)">No activity yet</p>';
+    return;
+  }
+  el.innerHTML = lines.map(line => {
+    let color = 'var(--muted)';
+    if (/BUY|BRACKET/.test(line))            color = 'var(--green)';
+    if (/SELL|CLOSE|LIQUIDATE/.test(line))   color = 'var(--red)';
+    if (/HALT|ERROR|DRAWDOWN/.test(line))    color = 'var(--amber)';
+    if (/FLAGGED/.test(line))                color = 'var(--blue)';
+    if (/SKIP|No signals/.test(line))        color = 'var(--dim)';
+    return `<div style="color:${color};line-height:1.6">${esc(line)}</div>`;
+  }).join('');
+}
+
+// ─── Chart ────────────────────────────────────────────────────────────────────
+function renderChart(swingHist, intradayHist) {
+  const toMap = h => {
+    const m = {};
+    (h || []).forEach(e => { m[e.timestamp.slice(0,10)] = e.equity; });
+    return m;
+  };
+  const sm = toMap(swingHist);
+  const im = toMap(intradayHist);
+
+  const today = new Date().toISOString().slice(0,10);
+  const days  = [...new Set([...Object.keys(sm), ...Object.keys(im), today])].sort();
+  if (days.length < 2) days.unshift(prevDay(days[0] ?? today));
+
+  const fill = (map, ds) => {
+    let last = START;
+    return ds.map(d => { if (map[d] != null) last = map[d]; return last; });
+  };
+
+  const labels = days.map(d =>
+    new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { month:'short', day:'numeric' })
+  );
+  const sd = fill(sm, days);
+  const id = fill(im, days);
+
+  if (equityChart) equityChart.destroy();
+  const ctx = document.getElementById('equityChart').getContext('2d');
+
+  equityChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Swing', data: sd,
+          borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,.07)',
+          borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true, tension: 0.4,
+        },
+        {
+          label: 'Intraday', data: id,
+          borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,.07)',
+          borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true, tension: 0.4,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1E293B', borderColor: '#334155', borderWidth: 1,
+          titleColor: '#94A3B8', bodyColor: '#F8FAFC', padding: 12,
+          callbacks: {
+            label: c => ` ${c.dataset.label}: $${c.raw.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid:{ color:'#0F172A' }, ticks:{ color:'#475569', font:{size:11} } },
+        y: {
+          grid: { color:'#0F172A' },
+          ticks: {
+            color:'#475569', font:{size:11},
+            callback: v => '$' + (v/1000).toFixed(0) + 'k',
+          },
+        },
+      },
+    },
+  });
+}
+
+// ─── Market Status ────────────────────────────────────────────────────────────
+function updateMarketStatus() {
+  const now = new Date();
+  const et  = new Date(now.getTime() + (now.getTimezoneOffset() + (isDST(now) ? -4 : -5) * 60) * 60_000);
+  const h   = et.getHours(), m = et.getMinutes(), day = et.getDay();
+  const mins = h * 60 + m;
+
+  let label, dotStyle;
+  if (day === 0 || day === 6) {
+    label = 'Weekend · Market Closed'; dotStyle = 'background:var(--dim)';
+  } else if (mins >= 570 && mins < 960) {
+    label = 'Market Open';             dotStyle = 'background:var(--green)';
+  } else if (mins >= 480 && mins < 570) {
+    label = 'Pre-Market';              dotStyle = 'background:var(--amber)';
+  } else if (mins >= 960 && mins < 1200) {
+    label = 'After Hours';             dotStyle = 'background:var(--amber)';
+  } else {
+    label = 'Market Closed';           dotStyle = 'background:var(--dim)';
+  }
+
+  const isOpen  = label === 'Market Open';
+  const dotAnim = isOpen ? 'pulse' : '';
+  document.getElementById('marketStatus').innerHTML =
+    `<span class="w-2 h-2 rounded-full inline-block ${dotAnim}" style="${dotStyle}"></span>${label}`;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const prevDay = d => new Date(new Date(d+'T12:00:00Z') - 86_400_000).toISOString().slice(0,10);
+function isDST(d) {
+  const j = new Date(d.getFullYear(), 0, 1).getTimezoneOffset();
+  const l = new Date(d.getFullYear(), 6, 1).getTimezoneOffset();
+  return d.getTimezoneOffset() < Math.max(j, l);
+}
+</script>
+</body>
+</html>
